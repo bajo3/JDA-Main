@@ -1,0 +1,16 @@
+@"
+# Node / Next.js
+node_modules/
+.next/
+out/
+.vercel/
+.next/cache/
+
+# Envs
+.env*
+!.env.example
+
+# Logs / misc
+*.log
+.DS_Store
+"@ | Set-Content .gitignore
