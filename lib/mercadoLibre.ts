@@ -87,7 +87,7 @@ export function transformItemToVehicle (item: any) {
   const transmission = attrMap.CAJA || attrMap.Caja || attrMap['Transmisión'] || ''
   const motor = attrMap.MOTOR || attrMap.Motor || ''
   // precio y moneda
-  const price = item.price != null ? item.price.toString() : ''
+  const price = item.price != null ? item.price : undefined
   // imagen principal
   let image = ''
   if (Array.isArray(item.pictures) && item.pictures.length > 0) {
@@ -108,8 +108,18 @@ export function transformItemToVehicle (item: any) {
     Color: color,
     Caja: transmission,
     Motor: motor,
-    Precio: price,
+    Precio: price != null ? String(price) : '',
     Imagen: image,
+    // campos adicionales para VehicleCard
+    title: item.title || '',
+    price: typeof price === 'number' ? price : undefined,
+    brand: brand || '',
+    model: model || '',
+    year: year || '',
+    km: km || '',
+    thumbnail: image || '',
+    pictures: Array.isArray(item.pictures) ? item.pictures : undefined,
+    permalink: item.permalink || '',
     ...attrMap,
   }
 }
