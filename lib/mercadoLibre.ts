@@ -57,6 +57,19 @@ export async function getItem (itemId: string) {
   return res.json()
 }
 
+// lib/mercadoLibre.ts
+export async function getItemDescription(id: string, token: string) {
+  const res = await fetch(`https://api.mercadolibre.com/items/${id}/description`, {
+    headers: { Authorization: `Bearer ${token}` },
+    // Cache revalidable para no pegarle siempre
+    next: { revalidate: 3600 }
+  })
+  if (!res.ok) return ''
+  const data = await res.json()
+  return data.plain_text || ''
+}
+
+
 /**
  * Convierte un ítem de Mercado Libre en el formato interno `Vehicle`.
  * Intenta mapear algunos atributos comunes (Marca, Modelo, Año, KM, Color, etc.),
@@ -122,4 +135,6 @@ export function transformItemToVehicle (item: any) {
     permalink: item.permalink || '',
     ...attrMap,
   }
+
+  
 }
