@@ -1,31 +1,18 @@
-// Nota: no se usa `headers` aquí; podría importarse si necesitas leer
-// cabeceras de las peticiones entrantes en un endpoint de API.
-
-/*
- * Cliente sencillo para la API de Mercado Libre.
- * Utiliza el token de acceso y el ID de usuario definidos en variables
- * de entorno para realizar consultas autenticadas.  Si necesitas más
- * funciones (por ejemplo, registrar webhooks), crea funciones
- * adicionales siguiendo este patrón.
- */
+// lib/mercadoLibre.ts
+import { ensureFreshAccessToken } from './meliAuth'
 
 const BASE_URL = 'https://api.mercadolibre.com'
 
-/**
- * Devuelve la lista de IDs de publicaciones activas de un vendedor.
- */
-export async function listActiveItems (): Promise<string[]> {
+/** Lista de IDs de publicaciones activas del vendedor */
+export async function listActiveItems(): Promise<string[]> {
   const userId = process.env.MELI_USER_ID
-  const accessToken = process.env.MELI_ACCESS_TOKEN
-  if (!userId || !accessToken) {
-    throw new Error('Faltan variables de entorno MELI_USER_ID o MELI_ACCESS_TOKEN')
-  }
+  if (!userId) throw new Error('Falta MELI_USER_ID')
+  const accessToken = await ensureFreshAccessToken()
+
   const url = `${BASE_URL}/users/${userId}/items/search?status=active`
   const res = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-    // evita revalidar en tiempo de compilación; la ISR se controla en fetchVehicles
+    headers: { Authorization: `Bearer ${accessToken}` },
+    // En server runtime no cacheamos; el ISR lo gestionás en tus páginas
     next: { revalidate: 0 },
   })
   if (!res.ok) {
@@ -35,20 +22,12 @@ export async function listActiveItems (): Promise<string[]> {
   return (data.results as string[]) || []
 }
 
-/**
- * Obtiene el detalle de una publicación de Mercado Libre.
- * Las respuestas incluyen título, precio, imágenes y atributos.
- */
-export async function getItem (itemId: string) {
-  const accessToken = process.env.MELI_ACCESS_TOKEN
-  if (!accessToken) {
-    throw new Error('La variable de entorno MELI_ACCESS_TOKEN no está definida')
-  }
+/** Detalle de un ítem */
+export async function getItem(itemId: string) {
+  const accessToken = await ensureFreshAccessToken()
   const url = `${BASE_URL}/items/${itemId}`
   const res = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
+    headers: { Authorization: `Bearer ${accessToken}` },
     next: { revalidate: 0 },
   })
   if (!res.ok) {
@@ -57,25 +36,22 @@ export async function getItem (itemId: string) {
   return res.json()
 }
 
-// lib/mercadoLibre.ts
-export async function getItemDescription(id: string, token: string) {
-  const res = await fetch(`https://api.mercadolibre.com/items/${id}/description`, {
-    headers: { Authorization: `Bearer ${token}` },
-    // Cache revalidable para no pegarle siempre
-    next: { revalidate: 3600 }
+/** Descripción larga del aviso */
+export async function getItemDescription(id: string, token?: string) {
+  const accessToken = token ?? await ensureFreshAccessToken()
+  const res = await fetch(`${BASE_URL}/items/${id}/description`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    next: { revalidate: 3600 }, // cache revalidable para no pegarle siempre
   })
   if (!res.ok) return ''
   const data = await res.json()
   return data.plain_text || ''
 }
 
-
 /**
- * Convierte un ítem de Mercado Libre en el formato interno `Vehicle`.
- * Intenta mapear algunos atributos comunes (Marca, Modelo, Año, KM, Color, etc.),
- * pero también copia todos los atributos como claves adicionales.
+ * Mapea un ítem de ML a tu modelo interno Vehicle
  */
-export function transformItemToVehicle (item: any) {
+export function transformItemToVehicle(item: any) {
   const attrMap: Record<string, any> = {}
   if (Array.isArray(item.attributes)) {
     for (const attr of item.attributes) {
@@ -87,11 +63,9 @@ export function transformItemToVehicle (item: any) {
       if (name) attrMap[name] = value
     }
   }
-  // algunos campos habituales se extraen de attributes o del título
+
   const title: string = item.title || ''
-  // usar el primer término del título como marca si no hay BRAND
   const brand = attrMap.BRAND || attrMap.Marca || title.split(' ')[0]
-  // intentar obtener modelo y versión
   const model = attrMap.MODEL || attrMap.Modelo || attrMap.Model || ''
   const version = attrMap.TRIM || attrMap.Version || ''
   const year = attrMap.YEAR || attrMap.Año || ''
@@ -99,19 +73,18 @@ export function transformItemToVehicle (item: any) {
   const color = attrMap.COLOR || attrMap.Color || ''
   const transmission = attrMap.CAJA || attrMap.Caja || attrMap['Transmisión'] || ''
   const motor = attrMap.MOTOR || attrMap.Motor || ''
-  // precio y moneda
   const price = item.price != null ? item.price : undefined
-  // imagen principal
+
   let image = ''
   if (Array.isArray(item.pictures) && item.pictures.length > 0) {
-    // usar secure_url si está disponible
     image = item.pictures[0].secure_url || item.pictures[0].url || ''
   } else if (item.thumbnail) {
     image = item.thumbnail
   }
+
   return {
     id: item.id,
-    slug: '', // se completará más tarde con vehicleToSlug
+    slug: '', // lo completa vehicleToSlug en fetchVehicles
     Unidad: brand,
     Marca: brand,
     Modelo: model,
@@ -123,7 +96,7 @@ export function transformItemToVehicle (item: any) {
     Motor: motor,
     Precio: price != null ? String(price) : '',
     Imagen: image,
-    // campos adicionales para VehicleCard
+    // claves que usa tu UI
     title: item.title || '',
     price: typeof price === 'number' ? price : undefined,
     brand: brand || '',
@@ -135,6 +108,4 @@ export function transformItemToVehicle (item: any) {
     permalink: item.permalink || '',
     ...attrMap,
   }
-
-  
 }
