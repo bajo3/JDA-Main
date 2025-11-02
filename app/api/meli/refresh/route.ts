@@ -1,15 +1,15 @@
 // app/api/meli/refresh/route.ts
-export const runtime = 'nodejs'         // necesario para fs
-export const dynamic = 'force-dynamic'  // siempre servidor
+export const runtime = 'nodejs'         // permite usar fs en serverless
+export const dynamic = 'force-dynamic'  // no cachear este endpoint
 
 import { NextResponse } from 'next/server'
-import { refreshWithStoredToken } from '@/lib/meliAuth'
+import { refreshWithStoredToken } from '../../../../lib/meliAuth' // <- relativo
 
 function isAuthorized(req: Request) {
-  const required = process.env.CRON_SECRET
-  if (!required) return true // si no configuraste secreto, no bloqueamos
-  const auth = req.headers.get('authorization') || req.headers.get('Authorization')
-  return auth === `Bearer ${required}`
+  const secret = process.env.CRON_SECRET
+  if (!secret) return true // si no definiste CRON_SECRET, no bloqueamos
+  const auth = req.headers.get('authorization') || req.headers.get('Authorization') || ''
+  return auth === `Bearer ${secret}`
 }
 
 export async function GET(req: Request) {
