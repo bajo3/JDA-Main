@@ -1,80 +1,63 @@
 // lib/fetchVehicles.ts
-import { listActiveItems, getItem, transformItemToVehicle } from './mercadoLibre'
-import { vehicleToSlug } from './slug'
+import { listActiveItems, getItem, transformItemToVehicle } from "./mercadoLibre"
 
-// Definición del tipo Vehicle (igual que antes)
 export type Vehicle = {
   id: string
   slug: string
-  Marca?: string
   Unidad?: string
+  Marca?: string
   Modelo?: string
+  Año?: string | number
   Version?: string
-  Año?: string
-  KM?: string
   Color?: string
   Caja?: string
   Motor?: string
-  Precio?: string
+  KM?: string | number
+  Precio?: string | number
   Imagen?: string
-  title?: string
-  price?: number
-  brand?: string
-  model?: string
-  year?: string
-  km?: string
-  thumbnail?: string
-  pictures?: any[]
-  permalink?: string
   [k: string]: any
 }
 
+// ENV solo de Mercado Libre
+const MELI_USER_ID = process.env.MELI_USER_ID
+const MELI_ACCESS_TOKEN = process.env.MELI_ACCESS_TOKEN
+
 /**
- * Obtiene la lista de vehículos publicados en Mercado Libre.
- * Lanza un error si falta MELI_USER_ID.  No requiere MELI_ACCESS_TOKEN.
+ * Obtiene los vehículos desde la API de Mercado Libre.
+ * Si faltan credenciales o hay error, devuelve [] (no rompe el build).
  */
 async function fetchFromMeli(): Promise<Vehicle[]> {
-  const userId = process.env.MELI_USER_ID
-  if (!userId) {
-    throw new Error('Falta MELI_USER_ID')
+  if (!(MELI_USER_ID && MELI_ACCESS_TOKEN)) {
+    console.warn("[fetchVehicles] Faltan credenciales MELI, devolviendo [].")
+    return []
   }
 
-  // 1) Obtener IDs activos
   const ids = await listActiveItems()
-  if (!ids.length) return []
+  const { vehicleToSlug } = await import("./slug")
+  const items = await Promise.all(ids.map((id) => getItem(id)))
 
-  // 2) Obtener cada publicación (paralelo)
-  const items = await Promise.all(
-    ids.map((id) =>
-      getItem(id).catch(() => null) // ignora errores individuales
-    )
-  )
+  const vehicles = items.map((item, idx) => {
+    const base = transformItemToVehicle(item)
+    const slug = vehicleToSlug(base, idx)
+    return { ...base, slug }
+  })
 
-  // 3) Mapear al tipo Vehicle y asignar slug
-  const vehicles: Vehicle[] = items
-    .filter(Boolean)
-    .map((item: any, idx: number) => {
-      const base = transformItemToVehicle(item)
-      const slug = vehicleToSlug(base, idx)
-      return { ...base, slug }
-    })
-
-  // 4) Ordenar (ejemplo: por año desc)
-  vehicles.sort((a, b) => Number(b.year || 0) - Number(a.year || 0))
-  return vehicles
+  return vehicles as Vehicle[]
 }
 
-/** API pública: devuelve vehículos o array vacío si ocurre un error. */
+/**
+ * API pública: siempre intenta usar MELI.
+ * Si algo falla, devuelve [] para no romper ni el catálogo ni el sitemap.
+ */
 export async function fetchVehicles(): Promise<Vehicle[]> {
   try {
     return await fetchFromMeli()
   } catch (err) {
-    console.warn('[fetchVehicles] Error obteniendo vehículos:', err)
+    console.error("[fetchVehicles] Error obteniendo vehículos MELI:", err)
     return []
   }
 }
 
-/** Devuelve un vehículo por su slug, o null si no se encuentra. */
 export async function fetchVehicleBySlug(slug: string): Promise<Vehicle | null> {
   const list = await fetchVehicles()
   return list.find((v) => v.slug === slug) ?? null
