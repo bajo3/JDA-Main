@@ -1,5 +1,6 @@
 // lib/fetchVehicles.ts
 import { listActiveItems, getItem, transformItemToVehicle } from "./mercadoLibre"
+import { vehicleToSlug } from "./slug"
 
 export type Vehicle = {
   id: string
@@ -18,46 +19,45 @@ export type Vehicle = {
   [k: string]: any
 }
 
-// ENV solo de Mercado Libre
-const MELI_USER_ID = process.env.MELI_USER_ID
-const MELI_ACCESS_TOKEN = process.env.MELI_ACCESS_TOKEN
-
 /**
  * Obtiene los vehículos desde la API de Mercado Libre.
- * Si faltan credenciales o hay error, devuelve [] (no rompe el build).
+ * Usa listActiveItems() + getItem() + transformItemToVehicle().
+ * Si algo falla, devuelve [] (no rompe el catálogo ni el build).
  */
 async function fetchFromMeli(): Promise<Vehicle[]> {
-  if (!(MELI_USER_ID && MELI_ACCESS_TOKEN)) {
-    console.warn("[fetchVehicles] Faltan credenciales MELI, devolviendo [].")
+  try {
+    const ids = await listActiveItems()
+    if (!ids || ids.length === 0) {
+      console.warn("[fetchFromMeli] No hay publicaciones activas.")
+      return []
+    }
+
+    const items = await Promise.all(ids.map((id) => getItem(id)))
+
+    const vehicles = items.map((item, index) => {
+      const base = transformItemToVehicle(item)
+      const slug = vehicleToSlug(base, index)
+      return { ...base, slug }
+    })
+
+    return vehicles as Vehicle[]
+  } catch (err) {
+    console.error("[fetchFromMeli] Error obteniendo vehículos desde MELI:", err)
     return []
   }
-
-  const ids = await listActiveItems()
-  const { vehicleToSlug } = await import("./slug")
-  const items = await Promise.all(ids.map((id) => getItem(id)))
-
-  const vehicles = items.map((item, idx) => {
-    const base = transformItemToVehicle(item)
-    const slug = vehicleToSlug(base, idx)
-    return { ...base, slug }
-  })
-
-  return vehicles as Vehicle[]
 }
 
 /**
- * API pública: siempre intenta usar MELI.
- * Si algo falla, devuelve [] para no romper ni el catálogo ni el sitemap.
+ * API pública: devuelve la lista de vehículos para el catálogo.
+ * Hoy solo usa Mercado Libre.
  */
 export async function fetchVehicles(): Promise<Vehicle[]> {
-  try {
-    return await fetchFromMeli()
-  } catch (err) {
-    console.error("[fetchVehicles] Error obteniendo vehículos MELI:", err)
-    return []
-  }
+  return fetchFromMeli()
 }
 
+/**
+ * Busca un vehículo por slug (para la página de detalle /catalogo/[slug])
+ */
 export async function fetchVehicleBySlug(slug: string): Promise<Vehicle | null> {
   const list = await fetchVehicles()
   return list.find((v) => v.slug === slug) ?? null
