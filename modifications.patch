@@ -1,0 +1,171 @@
+*** Begin Patch
+*** Update File: lib/tokenStorage.ts
+@@
+-const TOKENS_API_URL = process.env.MELI_TOKENS_API_URL
+-const TOKENS_API_KEY = process.env.MELI_TOKENS_API_KEY
++const TOKENS_API_URL = process.env.MELI_TOKENS_API_URL
++const TOKENS_API_KEY = process.env.MELI_TOKENS_API_KEY
++// Variables de entorno opcionales para tokens de fallback
++const ENV_ACCESS_TOKEN = process.env.MELI_ACCESS_TOKEN
++const ENV_REFRESH_TOKEN = process.env.MELI_REFRESH_TOKEN
++const ENV_EXPIRES_AT = process.env.MELI_EXPIRES_AT
++
++// Posible almacenamiento local de tokens (útil en desarrollo o cuando no se usa la API de Google Sheets)
++import fs from 'fs/promises'
++import path from 'path'
++const TOKENS_FILE = process.env.MELI_TOKENS_FILE || path.join(process.cwd(), '.meli_tokens.json')
+@@
+-export async function loadTokens(): Promise<StoredTokens | null> {
+-  if (!TOKENS_API_URL || !TOKENS_API_KEY) {
+-    console.error(
+-      "[tokenStorage] Faltan MELI_TOKENS_API_URL o MELI_TOKENS_API_KEY en las env."
+-    )
+-    return null
+-  }
+-
+-  const url = `${TOKENS_API_URL}?key=${encodeURIComponent(TOKENS_API_KEY)}`
+-
+-  const res = await fetch(url, { cache: "no-store" })
+-
+-  if (!res.ok) {
+-    console.error(
+-      "[tokenStorage] Error al leer tokens:",
+-      res.status,
+-      await res.text()
+-    )
+-    return null
+-  }
+-
+-  const json = await res.json()
+-
+-  if ((json as any).error === "NO_TOKENS") {
+-    console.error("[tokenStorage] NO_TOKENS en la hoja")
+-    return null
+-  }
+-
+-  if (!json.accessToken || !json.refreshToken || !json.expiresAt) {
+-    console.error("[tokenStorage] Respuesta inválida de tokens:", json)
+-    return null
+-  }
+-
+-  return {
+-    accessToken: String(json.accessToken),
+-    refreshToken: String(json.refreshToken),
+-    expiresAt: Number(json.expiresAt),
+-  }
+-}
++export async function loadTokens(): Promise<StoredTokens | null> {
++  // Si no hay API de tokens configurada intentamos cargar tokens desde variables de entorno o desde un archivo local
++  if (!TOKENS_API_URL || !TOKENS_API_KEY) {
++    // Fallback: variables de entorno
++    if (ENV_ACCESS_TOKEN && ENV_REFRESH_TOKEN && ENV_EXPIRES_AT) {
++      return {
++        accessToken: ENV_ACCESS_TOKEN,
++        refreshToken: ENV_REFRESH_TOKEN,
++        expiresAt: Number(ENV_EXPIRES_AT),
++      }
++    }
++    // Fallback: archivo en disco
++    try {
++      const data = await fs.readFile(TOKENS_FILE, 'utf8')
++      const json = JSON.parse(data)
++      if (!json.accessToken || !json.refreshToken || !json.expiresAt) {
++        return null
++      }
++      return {
++        accessToken: String(json.accessToken),
++        refreshToken: String(json.refreshToken),
++        expiresAt: Number(json.expiresAt),
++      }
++    } catch (_err) {
++      // No se encontraron tokens guardados localmente
++    }
++    console.error(
++      "[tokenStorage] Faltan MELI_TOKENS_API_URL o MELI_TOKENS_API_KEY en las env y no se encontraron tokens locales."
++    )
++    return null
++  }
++
++  // Llamamos a la API de tokens alojada en Google Apps Script
++  const url = `${TOKENS_API_URL}?key=${encodeURIComponent(TOKENS_API_KEY)}`
++  const res = await fetch(url, { cache: 'no-store' })
++
++  if (!res.ok) {
++    console.error(
++      '[tokenStorage] Error al leer tokens:',
++      res.status,
++      await res.text()
++    )
++    return null
++  }
++
++  const json = await res.json()
++  if ((json as any).error === 'NO_TOKENS') {
++    console.error('[tokenStorage] NO_TOKENS en la hoja')
++    return null
++  }
++  if (!json.accessToken || !json.refreshToken || !json.expiresAt) {
++    console.error('[tokenStorage] Respuesta inválida de tokens:', json)
++    return null
++  }
++  return {
++    accessToken: String(json.accessToken),
++    refreshToken: String(json.refreshToken),
++    expiresAt: Number(json.expiresAt),
++  }
++}
+@@
+-export async function saveTokens(tokens: StoredTokens): Promise<void> {
+-  if (!TOKENS_API_URL || !TOKENS_API_KEY) {
+-    console.error(
+-      "[tokenStorage] Faltan MELI_TOKENS_API_URL o MELI_TOKENS_API_KEY en las env."
+-    )
+-    return
+-  }
+-
+-  const res = await fetch(TOKENS_API_URL, {
+-    method: "POST",
+-    headers: { "Content-Type": "application/json" },
+-    body: JSON.stringify({
+-      key: TOKENS_API_KEY,
+-      tokens,
+-    }),
+-  })
+-
+-  if (!res.ok) {
+-    console.error(
+-      "[tokenStorage] Error al guardar tokens:",
+-      res.status,
+-      await res.text()
+-    )
+-  }
+-}
++export async function saveTokens(tokens: StoredTokens): Promise<void> {
++  // Si no hay API de tokens configurada intentamos guardar localmente
++  if (!TOKENS_API_URL || !TOKENS_API_KEY) {
++    try {
++      await fs.writeFile(TOKENS_FILE, JSON.stringify(tokens), 'utf8')
++    } catch (err) {
++      console.error('[tokenStorage] Error al guardar tokens localmente:', err)
++    }
++    return
++  }
++  // Enviamos los tokens actualizados a la API de Google Apps Script
++  const res = await fetch(TOKENS_API_URL, {
++    method: 'POST',
++    headers: { 'Content-Type': 'application/json' },
++    body: JSON.stringify({
++      key: TOKENS_API_KEY,
++      tokens,
++    }),
++  })
++  if (!res.ok) {
++    console.error(
++      '[tokenStorage] Error al guardar tokens:',
++      res.status,
++      await res.text()
++    )
++  }
++}
+*** End Patch
+*** End Patch

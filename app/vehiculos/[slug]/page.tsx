@@ -1,24 +1,19 @@
 import Image from "next/image"
 import Link from "next/link"
-import { fetchVehicleBySlug } from "@/lib/fetchVehicles"
+import { fetchVehicleBySlug, fetchVehicles } from "@/lib/fetchVehicles"
 
 type Props = { params: { slug: string } }
 
-/**
- * Incremental Static Regeneration:
- * Revalida cada 60s. Si no hay datos en build, no rompe (generateStaticParams retorna []).
- */
 export const revalidate = 60
 
 export async function generateStaticParams() {
   try {
-    const { fetchVehicles } = await import("@/lib/fetchVehicles")
     const list = await fetchVehicles()
     return list
       .filter(v => v?.slug)
       .map(v => ({ slug: v.slug as string }))
   } catch {
-    // Sin datos / error: no pre-generamos rutas, Next las servirá on-demand
+    // Si falla MELI en build, no rompe el build: no pre-generamos nada
     return []
   }
 }
@@ -29,12 +24,18 @@ export async function generateMetadata({ params }: Props) {
     return { title: "Vehículo no encontrado" }
   }
 
-  const title =
-    `${vehicle.Unidad || vehicle.Marca || ""} ${vehicle.Modelo || ""} ${vehicle.Año || ""}`
-      .replace(/\s+/g, " ")
-      .trim()
+  const v = vehicle as any
 
-  const description = `Oportunidad en ${title}. KM: ${vehicle.KM || "S/D"} · Precio: ${vehicle.Precio || "Consultar"}`
+  const title = `${v.Unidad || v.Marca || v.brand || ""} ${
+    v.Modelo || v.model || ""
+  } ${v.Año || v.year || ""}`
+    .replace(/\s+/g, " ")
+    .trim()
+
+  const description = `Oportunidad en ${title}. KM: ${
+    v.KM ?? v.km ?? "S/D"
+  } · Precio: ${v.Precio ?? v.price ?? "Consultar"}`
+
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://example.com"
   const url = `${baseUrl}/vehiculos/${params.slug}`
 
@@ -53,23 +54,35 @@ export default async function VehiclePage({ params }: Props) {
     return (
       <div className="space-y-6">
         <Link href="/catalogo">← Volver al catálogo</Link>
-        <div className="card">No encontrado</div>
+        <div className="card">Vehículo no encontrado</div>
       </div>
     )
   }
 
-  const title =
-    `${vehicle.Unidad || vehicle.Marca || ""} ${vehicle.Modelo || ""} ${vehicle.Año || ""}`
-      .replace(/\s+/g, " ")
-      .trim()
+  const v = vehicle as any
 
-  const phone = process.env.BUSINESS_WAPP || "+5492494000000"
+  const title = `${v.Unidad || v.Marca || v.brand || ""} ${
+    v.Modelo || v.model || ""
+  } ${v.Año || v.year || ""}`
+    .replace(/\s+/g, " ")
+    .trim()
+
+  // Unificamos número de WhatsApp
+  const phone =
+    process.env.NEXT_PUBLIC_WAPP || process.env.BUSINESS_WAPP || "+5492494000000"
   const msg = `Hola, me interesa el ${title} que vi en la web`
-  const wapp = `https://wa.me/${phone.replace(/\D+/g, "")}?text=${encodeURIComponent(msg)}`
+  const wapp = `https://wa.me/${phone.replace(
+    /\D+/g,
+    ""
+  )}?text=${encodeURIComponent(msg)}`
 
+  // Imagen principal: primero pictures, luego thumbnail/Imagen, luego placeholder
   const img =
-    (vehicle as any).Imagen ||
-    "/placeholder-vehicle.png" // asegurate de tener este archivo público
+    v.pictures?.[0]?.secure_url ||
+    v.pictures?.[0]?.url ||
+    v.thumbnail ||
+    v.Imagen ||
+    "/placeholder-vehicle.png"
 
   return (
     <div className="space-y-6">
@@ -82,8 +95,8 @@ export default async function VehiclePage({ params }: Props) {
               src={img}
               alt={title}
               fill
-              style={{ objectFit: "cover" }}
               sizes="(max-width: 768px) 100vw, 50vw"
+              style={{ objectFit: "cover" }}
               priority
             />
           </div>
@@ -93,10 +106,12 @@ export default async function VehiclePage({ params }: Props) {
           <h1>{title}</h1>
 
           <div className="card space-y-2 text-sm">
-            {["Version", "Color", "Caja", "Motor", "KM", "Precio"].map((k) => (
-              <div key={k} className="flex justify-between gap-4">
-                <span className="opacity-70">{k}</span>
-                <span className="font-medium">{(vehicle as any)[k] || "—"}</span>
+            {["Version", "Color", "Caja", "Motor", "KM", "Precio"].map(key => (
+              <div key={key} className="flex justify-between gap-4">
+                <span className="opacity-70">{key}</span>
+                <span className="font-medium">
+                  {v[key] ?? v[key.toLowerCase()] ?? "—"}
+                </span>
               </div>
             ))}
           </div>
@@ -106,31 +121,6 @@ export default async function VehiclePage({ params }: Props) {
           </a>
         </div>
       </div>
-
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
-            "@context": "https://schema.org",
-            "@type": "Vehicle",
-            name: title,
-            modelDate: vehicle.Año || undefined,
-            brand: vehicle.Marca || vehicle.Unidad || undefined,
-            mileageFromOdometer: vehicle.KM || undefined,
-            vehicleTransmission: vehicle.Caja || undefined,
-            color: vehicle.Color || undefined,
-            offers: {
-              "@type": "Offer",
-              price: (vehicle.Precio || "")
-                .toString()
-                .replace(/[^0-9.,]/g, ""),
-              priceCurrency: "ARS",
-              availability: "https://schema.org/InStock",
-              url: (process.env.NEXT_PUBLIC_SITE_URL || "https://example.com") + `/vehiculos/${params.slug}`,
-            },
-          }),
-        }}
-      />
     </div>
   )
 }

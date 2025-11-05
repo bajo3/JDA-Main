@@ -4,30 +4,40 @@ import { getValidAccessToken } from "./meliAuth"
 const BASE_URL = "https://api.mercadolibre.com"
 
 /** Lista de IDs de publicaciones activas del vendedor */
-export async function listActiveItems(): Promise<string[]> {
-  const userId = process.env.MELI_USER_ID
-  if (!userId) throw new Error("Falta MELI_USER_ID")
 
+export async function listActiveItems(): Promise<string[]> {
   const accessToken = await getValidAccessToken()
 
-  const url = `${BASE_URL}/users/${userId}/items/search?status=active`
+  // Usamos /users/me en lugar de /users/{userId} para evitar problemas de políticas
+  const url =
+    "https://api.mercadolibre.com/users/me/items/search?status=active"
+
   const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-    // En server runtime no cacheamos; el ISR lo gestionás en tus páginas
-    next: { revalidate: 0 },
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    cache: "no-store",
   })
 
   if (!res.ok) {
+    const body = await res.text().catch(() => "")
     console.error(
-      "[listActiveItems] Error",
+      "[listActiveItems] Error llamando a /users/me/items/search",
       res.status,
-      await res.text().catch(() => "")
+      body
     )
+
+    // Si ML nos devuelve 403 por PolicyAgent, no tiramos abajo toda la página:
+    // devolvemos una lista vacía y que el catálogo quede vacío pero funcionando.
+    if (res.status === 403) {
+      return []
+    }
+
     throw new Error(`No se pudieron obtener los ítems activos: ${res.status}`)
   }
 
-  const data = await res.json()
-  return (data.results as string[]) || []
+  const data = (await res.json()) as any
+  return Array.isArray(data.results) ? (data.results as string[]) : []
 }
 
 /** Detalle de un ítem */

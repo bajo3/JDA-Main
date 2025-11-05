@@ -1,7 +1,7 @@
-import { notFound } from 'next/navigation'
-import { fetchVehicleBySlug, fetchVehicles } from '../../../lib/fetchVehicles'
-import { getItemDescription } from '../../../lib/mercadoLibre'
-import VehicleDetailClient from './VehicleDetailClient'
+import { notFound } from "next/navigation"
+import { fetchVehicleBySlug, fetchVehicles } from "../../../lib/fetchVehicles"
+import { getItemDescription } from "../../../lib/mercadoLibre"
+import VehicleDetailClient from "./VehicleDetailClient"
 
 export const revalidate = 3600
 
@@ -34,23 +34,31 @@ export default async function VehicleDetailPage({ params }: PageProps) {
   }
 
   // Descripción desde Mercado Libre (solo servidor)
-  let description = ''
-  const accessToken = process.env.MELI_ACCESS_TOKEN
-
-  if (accessToken && vehicle.id) {
+  let description = ""
+  /**
+   * IMPORTANTE:
+   * No usamos un access token fijo de env.
+   * getItemDescription() internamente usa getValidAccessToken()
+   * que se encarga de refrescar el token cuando haga falta.
+   */
+  if (vehicle.id) {
     try {
-      description = await getItemDescription(vehicle.id, accessToken)
+      description = await getItemDescription(vehicle.id)
     } catch (e) {
-      console.error('Error obteniendo descripción ML:', e)
+      console.error("Error obteniendo descripción ML:", e)
     }
   }
 
-  // WhatsApp
-  const whatsappNumber = process.env.NEXT_PUBLIC_WAPP
+  // WhatsApp: primero NEXT_PUBLIC_WAPP, si no BUSINESS_WAPP
+  const whatsappNumber =
+    process.env.NEXT_PUBLIC_WAPP || process.env.BUSINESS_WAPP
+
   const whatsappHref =
     whatsappNumber &&
     `https://api.whatsapp.com/send?phone=${whatsappNumber}&text=${encodeURIComponent(
-      `Hola, vi ${vehicle.title ?? `${vehicle.brand ?? ''} ${vehicle.model ?? ''}`} en la web. ¿Sigue disponible?`
+      `Hola, vi ${
+        vehicle.title ?? `${vehicle.brand ?? ""} ${vehicle.model ?? ""}`
+      } en la web. ¿Sigue disponible?`
     )}`
 
   return (
@@ -58,7 +66,7 @@ export default async function VehicleDetailPage({ params }: PageProps) {
       vehicle={vehicle}
       images={images}
       description={description}
-      whatsappHref={whatsappHref || ''}
+      whatsappHref={whatsappHref || ""}
     />
   )
 }
